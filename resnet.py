@@ -1,5 +1,6 @@
 # Coder: Wenxin Xu
 # Github: https://github.com/wenxinxu/resnet_in_tensorflow
+# KS: This arch. modified to better match PixelVAE.
 # ==============================================================================
 '''
 This is the resnet structure
@@ -29,7 +30,7 @@ def create_variables(name, shape, initializer=tf.contrib.layers.xavier_initializ
     layers.
     :return: The created variable
     '''
-    
+
     ## TODO: to allow different weight decay to fully connected layer and conv layer
     regularizer = tf.contrib.layers.l2_regularizer(scale=FLAGS.weight_decay)
 
@@ -166,39 +167,41 @@ def inference(input_tensor_batch, n, reuse):
 
     layers = []
     with tf.variable_scope('conv0', reuse=reuse):
-        conv0 = conv_bn_relu_layer(input_tensor_batch, [3, 3, 3, 16], 1)
+        conv0 = conv_bn_relu_layer(input_tensor_batch, [3, 3, 3, 56], 1) # was = 16
         activation_summary(conv0)
         layers.append(conv0)
 
     for i in range(n):
         with tf.variable_scope('conv1_%d' %i, reuse=reuse):
             if i == 0:
-                conv1 = residual_block(layers[-1], 16, first_block=True)
+                conv1 = residual_block(layers[-1], 56, first_block=True) # was = 16
             else:
-                conv1 = residual_block(layers[-1], 16)
+                conv1 = residual_block(layers[-1], 56) # was = 16
             activation_summary(conv1)
             layers.append(conv1)
 
     for i in range(n):
         with tf.variable_scope('conv2_%d' %i, reuse=reuse):
-            conv2 = residual_block(layers[-1], 32)
+            conv2 = residual_block(layers[-1], 56) # was = 32
             activation_summary(conv2)
             layers.append(conv2)
 
     for i in range(n):
         with tf.variable_scope('conv3_%d' %i, reuse=reuse):
-            conv3 = residual_block(layers[-1], 64)
+            conv3 = residual_block(layers[-1], 56) # was = 64
             layers.append(conv3)
-        assert conv3.get_shape().as_list()[1:] == [8, 8, 64]
 
     with tf.variable_scope('fc', reuse=reuse):
         in_channel = layers[-1].get_shape().as_list()[-1]
-        bn_layer = batch_normalization_layer(layers[-1], in_channel)
-        relu_layer = tf.nn.relu(bn_layer)
+        # bn_layer = batch_normalization_layer(layers[-1], in_channel) # KS commented out in debug
+        relu_layer = tf.nn.relu(layers[-1])
         global_pool = tf.reduce_mean(relu_layer, [1, 2])
 
-        assert global_pool.get_shape().as_list()[-1:] == [64]
-        output = output_layer(global_pool, 10)
+        latent_layer = output_layer(global_pool, 10) # KS: added to simulate 10D latent code in PixelVAE
+        layers.append(latent_layer)
+
+    with tf.variable_scope('out', reuse=reuse):
+        output = output_layer(latent_layer, 1) # KS Note: this hard-codes the classification dimensionality!
         layers.append(output)
 
     return layers[-1]
